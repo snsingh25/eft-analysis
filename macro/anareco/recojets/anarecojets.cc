@@ -2,6 +2,7 @@
 #include "TTree.h"
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
+#include "TTreeReaderValue.h"
 #include "TH1F.h"
 #include "TCanvas.h"
 #include <iostream>
@@ -29,23 +30,31 @@ void anarecojets() {
     TTreeReaderArray<float> eta(reader, "Jet.Eta");
     TTreeReaderArray<float> phi(reader, "Jet.Phi");
     TTreeReaderArray<float> mass(reader, "Jet.Mass");
+    TTreeReaderValue<int> jetSize(reader, "Jet_size"); // Read jet multiplicity
 
-    // Create histograms for kinematic variables
+    // Create histograms for kinematic variables and jet multiplicity
     TH1F *hist_pt = new TH1F("Jet_PT", "Jet PT;PT [GeV];Events", 100, 0, 500);
     TH1F *hist_eta = new TH1F("Jet_Eta", "Jet Eta;Eta;Events", 100, -5, 5);
     TH1F *hist_phi = new TH1F("Jet_Phi", "Jet Phi;Phi [rad];Events", 100, -3.14, 3.14);
     TH1F *hist_mass = new TH1F("Jet_Mass", "Jet Mass;Mass [GeV];Events", 100, 0, 200);
+    TH1F *hist_multiplicity = new TH1F("Jet_Multiplicity", "Jet Multiplicity;Number of Jets;Events", 20, 0, 20);
 
     int eventCounter = 0;
+
     // Loop over all events
     while (reader.Next()) {
+        // Fill jet multiplicity histogram
+        hist_multiplicity->Fill(*jetSize);
+
         for (int i = 0; i < pt.GetSize(); i++) {
-            // Fill histograms
+            // Fill histograms for kinematic variables
             hist_pt->Fill(pt[i]);
             hist_eta->Fill(eta[i]);
             hist_phi->Fill(phi[i]);
             hist_mass->Fill(mass[i]);
         }
+
+        eventCounter++;
     }
 
     // Create a canvas for plotting
@@ -71,6 +80,10 @@ void anarecojets() {
     hist_mass->Draw();
     canvas->Print("Jet_Kinematics.pdf");
 
+    hist_multiplicity->SetLineColor(kCyan);
+    hist_multiplicity->Draw();
+    canvas->Print("Jet_Kinematics.pdf");
+
     // Close the PDF file
     canvas->Print("Jet_Kinematics.pdf]");
 
@@ -80,6 +93,7 @@ void anarecojets() {
     hist_eta->Write();
     hist_phi->Write();
     hist_mass->Write();
+    hist_multiplicity->Write();
     outputFile->Close();
 
     // Clean up
@@ -87,6 +101,7 @@ void anarecojets() {
     delete hist_eta;
     delete hist_phi;
     delete hist_mass;
+    delete hist_multiplicity;
     delete canvas;
     file->Close();
     delete file;

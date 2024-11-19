@@ -2,19 +2,24 @@
 #include "TTree.h"
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
-#include "TH1F.h"
-#include "TCanvas.h"
 #include "TLorentzVector.h"
 #include <iostream>
 #include <cmath>
+#include <string>
+
+const std::string& inputOperator = "T2Quad";
+const std::string& inputFilePath = "/data/snsingh/aQGC_Gridpacks/ssWW/allrootfiles/"+inputOperator+"/run01_events.root";
 
 void anarecojj() {
     // Open the ROOT file
-    TFile *file = TFile::Open("/data/snsingh/aQGC_Gridpacks/ssWW/allrootfiles/T2Int/run01_events.root");
+    TFile *file = TFile::Open(inputFilePath.c_str());
     if (!file || file->IsZombie()) {
-        std::cerr << "Error: Unable to open input file!" << std::endl;
+        std::cerr << "Error: Unable to open input file '" << inputFilePath << "'!" << std::endl;
         return;
     }
+
+    std::string outputName = inputOperator + "_recojj.root"; // Create output name
+    std::cout << "Output file will be named: " << outputName << std::endl;
 
     // Get the Delphes tree
     TTree *tree = dynamic_cast<TTree*>(file->Get("Delphes"));
@@ -30,103 +35,77 @@ void anarecojj() {
     TTreeReaderArray<float> eta(reader, "Jet.Eta");
     TTreeReaderArray<float> phi(reader, "Jet.Phi");
     TTreeReaderArray<float> mass(reader, "Jet.Mass");
-    TTreeReaderValue<int> jetSize(reader, "Jet.@size");
+    TTreeReaderValue<int> jetSize(reader, "Jet_size");
 
-    // Create histograms for kinematic variables and jet multiplicity
-    TH1F *hist_pt = new TH1F("Jet_PT", "Jet PT;PT [GeV];Events", 100, 0, 500);
-    TH1F *hist_eta = new TH1F("Jet_Eta", "Jet Eta;Eta;Events", 100, -5, 5);
-    TH1F *hist_phi = new TH1F("Jet_Phi", "Jet Phi;Phi [rad];Events", 100, -3.14, 3.14);
-    TH1F *hist_mass = new TH1F("Jet_Mass", "Jet Mass;Mass [GeV];Events", 100, 0, 200);
-    TH1F *hist_deltaR = new TH1F("Jet_DeltaR", "Angular Separation (ΔR) Between Two Jets;ΔR;Events", 100, 0, 5);
-    TH1F *hist_multiplicity = new TH1F("Jet_Multiplicity", "Jet Multiplicity;Number of Jets;Events", 20, 0, 20);
+    // Create output ROOT file and TTree for storing NTuples
+    TFile *outputFile = new TFile(outputName.c_str(), "RECREATE");
+    TTree *outputTree = new TTree("JetKinematics", "Jet Kinematics Tree");
 
-    int eventCounter = 0;
+    // Variables to store in the tree
+    float jet1_pt, jet1_eta, jet1_phi, jet1_mass;
+    float jet2_pt, jet2_eta, jet2_phi, jet2_mass;
+    float deltaR = -999.0;
+    float mjj = -999.0; // Combined invariant mass of the two jets
+
+    // Branches for the output tree
+    outputTree->Branch("Jet1_PT", &jet1_pt, "Jet1_PT/F");
+    outputTree->Branch("Jet1_Eta", &jet1_eta, "Jet1_Eta/F");
+    outputTree->Branch("Jet1_Phi", &jet1_phi, "Jet1_Phi/F");
+    outputTree->Branch("Jet1_Mass", &jet1_mass, "Jet1_Mass/F");
+    outputTree->Branch("Jet2_PT", &jet2_pt, "Jet2_PT/F");
+    outputTree->Branch("Jet2_Eta", &jet2_eta, "Jet2_Eta/F");
+    outputTree->Branch("Jet2_Phi", &jet2_phi, "Jet2_Phi/F");
+    outputTree->Branch("Jet2_Mass", &jet2_mass, "Jet2_Mass/F");
+    outputTree->Branch("DeltaR", &deltaR, "DeltaR/F");
+    outputTree->Branch("Mjj", &mjj, "Mjj/F");
+
     // Loop over all events
     while (reader.Next()) {
-        hist_multiplicity->Fill(*jetSize); // Fill jet multiplicity histogram
-        if (eventCounter >= 100) break; // Stop after processing 100 events
-        eventCounter++;
+        if (*jetSize != 2) continue; // Process only events with exactly 2 jets
 
-        if (*jetSize != 2) continue; // Skip events with fewer than two jets
-
-        // Process jets for kinematic variables and ΔR calculation
+        // Process jets for kinematic variables, ΔR, and mjj calculation
         TLorentzVector jet1, jet2;
         for (int i = 0; i < pt.GetSize(); i++) {
             TLorentzVector jet;
             jet.SetPtEtaPhiM(pt[i], eta[i], phi[i], mass[i]);
 
-            // Fill histograms for all jets
-            hist_pt->Fill(pt[i]);
-            hist_eta->Fill(eta[i]);
-            hist_phi->Fill(phi[i]);
-            hist_mass->Fill(mass[i]);
-
-            // Store the first two jets for ΔR calculation
-            if (i == 0) jet1 = jet;
-            if (i == 1) jet2 = jet;
+            // Store the first two jets
+            if (i == 0) {
+                jet1 = jet;
+                jet1_pt = pt[i];
+                jet1_eta = eta[i];
+                jet1_phi = phi[i];
+                jet1_mass = mass[i];
+            } else if (i == 1) {
+                jet2 = jet;
+                jet2_pt = pt[i];
+                jet2_eta = eta[i];
+                jet2_phi = phi[i];
+                jet2_mass = mass[i];
+                break; // Only need the first two jets
+            }
         }
 
-        // Calculate and fill ΔR for the first two jets
+        // Calculate ΔR and mjj
         if (jet1.Pt() > 0 && jet2.Pt() > 0) {
-            float deltaR = jet1.DeltaR(jet2);
-            hist_deltaR->Fill(deltaR);
+            deltaR = jet1.DeltaR(jet2);
+            mjj = (jet1 + jet2).M(); // Combined invariant mass
+        } else {
+            deltaR = -999.0; // Invalid ΔR
+            mjj = -999.0;    // Invalid mjj
         }
+
+        // Fill the NTuple
+        outputTree->Fill();
     }
 
-    // Create a canvas for plotting
-    TCanvas *canvas = new TCanvas("canvas", "Jet Kinematics", 800, 600);
-
-    // Open a PDF file for multi-page output
-    canvas->Print("Jet_Kinematics.pdf[");
-
-    // Plot each histogram on a separate page
-    hist_pt->SetLineColor(kBlue);
-    hist_pt->Draw();
-    canvas->Print("Jet_Kinematics.pdf");
-
-    hist_eta->SetLineColor(kRed);
-    hist_eta->Draw();
-    canvas->Print("Jet_Kinematics.pdf");
-
-    hist_phi->SetLineColor(kGreen);
-    hist_phi->Draw();
-    canvas->Print("Jet_Kinematics.pdf");
-
-    hist_mass->SetLineColor(kMagenta);
-    hist_mass->Draw();
-    canvas->Print("Jet_Kinematics.pdf");
-
-    hist_deltaR->SetLineColor(kOrange);
-    hist_deltaR->Draw();
-    canvas->Print("Jet_Kinematics.pdf");
-
-    hist_multiplicity->SetLineColor(kCyan);
-    hist_multiplicity->Draw();
-    canvas->Print("Jet_Kinematics.pdf");
-
-    // Close the PDF file
-    canvas->Print("Jet_Kinematics.pdf]");
-
-    // Save histograms to a ROOT file
-    TFile *outputFile = TFile::Open("Jet_Kinematics.root", "RECREATE");
-    hist_pt->Write();
-    hist_eta->Write();
-    hist_phi->Write();
-    hist_mass->Write();
-    hist_deltaR->Write();
-    hist_multiplicity->Write();
+    // Write and close the output file
+    outputTree->Write();
     outputFile->Close();
 
     // Clean up
-    delete hist_pt;
-    delete hist_eta;
-    delete hist_phi;
-    delete hist_mass;
-    delete hist_deltaR;
-    delete hist_multiplicity;
-    delete canvas;
     file->Close();
     delete file;
 
-    std::cout << "Histograms saved to 'Jet_Kinematics.root' and 'Jet_Kinematics.pdf'." << std::endl;
+    std::cout << "NTuples saved to '" << outputName << "'." << std::endl;
 }
