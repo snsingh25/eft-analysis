@@ -1,14 +1,17 @@
+//******************************
+// Generator Level Particle Information.
+//******************************
+
 #include "TFile.h"
 #include "TTree.h"
 #include "TTreeReader.h"
 #include "TTreeReaderArray.h"
 #include "TH1F.h"
 #include "TCanvas.h"
-#include "TLorentzVector.h"
 #include <iostream>
 #include <cmath>
 
-void ana() {
+void anagen() {
     // Open the ROOT file
     TFile *file = TFile::Open("/data/snsingh/aQGC_Gridpacks/ssWW/allrootfiles/T2Int/run01_events.root");
     if (!file || file->IsZombie()) {
@@ -37,23 +40,9 @@ void ana() {
     TH1F *hist_phi = new TH1F("Particle_Phi", "Particle Phi;Phi [rad];Events", 100, -3.14, 3.14);
     TH1F *hist_mass = new TH1F("Particle_Mass", "Particle Mass;Mass [GeV];Events", 100, 0, 200);
 
-    // Debug variables
-    int eventCounter = 0;  // Count processed events
-    int particleCounter = 0;  // Count processed particles
-
     // Loop over all events
     while (reader.Next()) {
-        eventCounter++;
-        std::cout << "Processing event " << eventCounter << "..." << std::endl;
-
         for (int i = 0; i < pt.GetSize(); i++) {
-            particleCounter++;
-            // std::cout << "Particle " << particleCounter
-            //           << " - PT: " << pt[i]
-            //           << ", Eta: " << eta[i]
-            //           << ", Phi: " << phi[i]
-            //           << ", Mass: " << mass[i] << std::endl;
-
             // Fill histograms
             hist_pt->Fill(pt[i]);
             hist_eta->Fill(eta[i]);
@@ -62,29 +51,39 @@ void ana() {
         }
     }
 
-    // Create a canvas to draw the histograms
-    TCanvas *canvas = new TCanvas("canvas", "Particle Kinematics", 1200, 800);
-    canvas->Divide(2, 2);
+    // Create a canvas for plotting
+    TCanvas *canvas = new TCanvas("canvas", "Particle Kinematics", 800, 600);
 
-    // Draw histograms
-    canvas->cd(1);
+    // Open a PDF file for multi-page output
+    canvas->Print("Particle_Kinematics.pdf[");
+
+    // Plot each histogram on a separate page
     hist_pt->SetLineColor(kBlue);
     hist_pt->Draw();
+    canvas->Print("Particle_Kinematics.pdf");
 
-    canvas->cd(2);
     hist_eta->SetLineColor(kRed);
     hist_eta->Draw();
+    canvas->Print("Particle_Kinematics.pdf");
 
-    canvas->cd(3);
     hist_phi->SetLineColor(kGreen);
     hist_phi->Draw();
+    canvas->Print("Particle_Kinematics.pdf");
 
-    canvas->cd(4);
     hist_mass->SetLineColor(kMagenta);
     hist_mass->Draw();
+    canvas->Print("Particle_Kinematics.pdf");
 
-    // Save the canvas as a PDF
-    canvas->SaveAs("Particle_Kinematics_Debug.pdf");
+    // Close the PDF file
+    canvas->Print("Particle_Kinematics.pdf]");
+
+    // Save histograms to a ROOT file
+    TFile *outputFile = TFile::Open("Particle_Kinematics.root", "RECREATE");
+    hist_pt->Write();
+    hist_eta->Write();
+    hist_phi->Write();
+    hist_mass->Write();
+    outputFile->Close();
 
     // Clean up
     delete hist_pt;
@@ -95,5 +94,5 @@ void ana() {
     file->Close();
     delete file;
 
-    std::cout << "Histograms saved as 'Particle_Kinematics_Debug.pdf'." << std::endl;
+    std::cout << "Histograms saved to 'Particle_Kinematics.root' and 'Particle_Kinematics.pdf'." << std::endl;
 }
